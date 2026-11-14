@@ -1,0 +1,70 @@
+# yaml-language-server: $schema=https://goreleaser.com/static/schema.json
+version: 2
+
+project_name: orbit
+
+before:
+  hooks:
+    - go mod download
+
+builds:
+  - id: orb
+    main: ./cmd/orb
+    binary: orb
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - darwin
+      - linux
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    flags:
+      - -trimpath
+    # v-prefixed, like the Makefile's git describe.
+    ldflags:
+      - -s -w -X main.version=v{{ .Version }} -X main.commit={{ .ShortCommit }} -X main.date={{ .Date }}
+    # The commit's time rather than the build's, so a rebuild of the tag is
+    # byte-for-byte the same.
+    mod_timestamp: "{{ .CommitTimestamp }}"
+
+archives:
+  - id: orb
+    ids:
+      - orb
+    formats:
+      - tar.gz
+    format_overrides:
+      - goos: windows
+        formats:
+          - zip
+    name_template: >-
+      {{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ if eq .Arch "amd64" }}x86_64{{ else }}{{ .Arch }}{{ end }}
+    files:
+      - README.md
+      - LICENSE
+
+checksum:
+  name_template: checksums.txt
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-dev"
+
+release:
+  github:
+    owner: andrerfcsantos
+    name: orbit
+  prerelease: auto
+  # So re-running the workflow for a tag whose release failed partway through
+  # replaces what the first attempt uploaded, rather than failing on it.
+  replace_existing_artifacts: true
+
+changelog:
+  use: github
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"

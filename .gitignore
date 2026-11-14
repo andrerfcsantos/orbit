@@ -1,0 +1,21 @@
+# Build output
+/bin/
+/dist/
+tmp/
+# A stray binary from `go build ./cmd/orb` in the repo root.
+/orb
+/orb.exe
+
+# Local config written by `orb config` from inside the checkout
+/.orbit/
+
+# Editors
+.idea/
+.vscode/
+*.swp
+
+# OS
+.DS_Store
+
+# Agent instructions are tracked, whatever a global gitignore says
+!AGENTS.md
