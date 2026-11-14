@@ -1,0 +1,71 @@
+name: ci
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      # The tests drive real git repositories, and commit in them.
+      - name: Configure git
+        run: |
+          git config --global user.name "orbit ci"
+          git config --global user.email "ci@example.invalid"
+          git config --global init.defaultBranch main
+
+      - name: Lint, test and race test
+        run: make check
+
+  # Every release target compiles, and .goreleaser.yaml is valid, before a tag
+  # finds out otherwise.
+  release-build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Check the GoReleaser config
+        uses: goreleaser/goreleaser-action@v7
+        with:
+          distribution: goreleaser-pro
+          version: "~> v2"
+          args: check
+        env:
+          GORELEASER_KEY: ${{ secrets.GORELEASER_KEY }}
+
+      - name: Build every release target
+        uses: goreleaser/goreleaser-action@v7
+        with:
+          distribution: goreleaser-pro
+          version: "~> v2"
+          args: build --snapshot --clean
+        env:
+          GORELEASER_KEY: ${{ secrets.GORELEASER_KEY }}

@@ -1,0 +1,82 @@
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to publish, for example v1.2.3.
+        required: true
+        type: string
+  # Tags pushed with GITHUB_TOKEN do not trigger workflows, so the development
+  # release workflow calls this one directly.
+  workflow_call:
+    inputs:
+      tag:
+        description: Release tag to publish.
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  goreleaser:
+    runs-on: ubuntu-latest
+    env:
+      RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ env.RELEASE_TAG }}
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      # A stable release's changelog runs from the previous stable release, or
+      # from the first commit for the first one, never from a development release.
+      # Empty for a development release, which leaves GoReleaser to pick the
+      # nearest tag.
+      - name: Find previous release tag
+        id: previous
+        run: |
+          previous=""
+          if grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$' <<< "${RELEASE_TAG}"; then
+            previous="$(
+              git tag --list 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname |
+                grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' |
+                grep -A1 -Fx "${RELEASE_TAG}" |
+                sed -n 2p || true
+            )"
+            if [[ -z "${previous}" ]]; then
+              previous="$(git rev-list --max-parents=0 HEAD | tail -n 1)"
+            fi
+          fi
+          echo "tag=${previous}" >> "${GITHUB_OUTPUT}"
+
+      - name: Test
+        run: go test ./...
+
+      - name: Run GoReleaser
+        uses: goreleaser/goreleaser-action@v7
+        with:
+          distribution: goreleaser-pro
+          version: "~> v2"
+          args: release --clean
+        env:
+          # A development tag and a stable tag can point at the same commit.
+          GORELEASER_CURRENT_TAG: ${{ env.RELEASE_TAG }}
+          GORELEASER_PREVIOUS_TAG: ${{ steps.previous.outputs.tag }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GORELEASER_KEY: ${{ secrets.GORELEASER_KEY }}
